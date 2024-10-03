@@ -1,0 +1,339 @@
+---
+title: "P8105_hw2_zz3309"
+author: "Zebang Zhang"
+date: 2024-09-27
+output: github_document
+---
+
+Show libraries used.
+```{r}
+library(tidyverse)
+library(readxl)
+```
+
+## Problem 1
+
+Import data, change column types, clean variable names, select variables wanted, and convert the entry variable from character to a logical variable.
+
+```{r}
+nyc_transit = 
+  read_csv(
+    "./hw2_datasets/NYC_Transit_Subway_Entrance_And_Exit_Data.csv",
+    col_types = cols(Route8 = "c", Route9 = "c", Route10 = "c", Route11 = "c")) |> 
+  janitor::clean_names() |> 
+  select(
+    line, station_name, station_latitude, station_longitude, 
+    starts_with("route"), entry, exit_only, vending, entrance_type, 
+    ada) |> 
+  mutate(entry = ifelse(entry == "YES", TRUE, FALSE))
+```
+
+```{r}
+names(nyc_transit)
+```
+
+```{r}
+cat("This dataset has", nrow(nyc_transit), "rows and", ncol(nyc_transit), 'columns.')
+```
+
+These data are not tidy, route number and route name should both be variables.
+
+```{r}
+#calculate distinct stations
+stations=
+  nyc_transit |> 
+  select(station_name, line) |> 
+  distinct()
+stations
+```
+
+```{r}
+#calculate ADA-compliant stations 
+ada_compliant_stat=
+  nyc_transit |> 
+  filter(ada == TRUE) |> 
+  select(station_name, line) |> 
+  distinct()
+ada_compliant_stat
+```
+
+```{r}
+#calculate proportion of station entrances / exits without vending allow entrance
+proportion= 
+  nyc_transit |> 
+  filter(vending == "NO") |> 
+  pull(entry) |> 
+  mean()
+proportion
+```
+
+```{r}
+#Reformat data so that route number and route name are distinct variables
+nyc_transit_tidy= nyc_transit |> 
+  pivot_longer(
+    route1:route11,
+    names_to = "route_num",
+    values_to = "route_name")
+```
+
+```{r}
+nyc_transit_tidy |>
+  filter(route_name== "A") |> 
+  select(station_name, line) |> 
+  distinct()
+```
+
+```{r}
+nyc_transit_tidy |>
+  filter(route_name == "A", ada == TRUE) |> 
+  select(station_name, line) |> 
+  distinct()
+```
+
+## Problem 2
+
+First, I read and clean the Mr. Trash Wheel sheet.  
+
+I use the arguement "range" in read_excel() to omit non-data entries; I use clean_names() in janitor to have reasonable variable names; I omit rows that do not include dumpster-specific data by removing the rows whose 'dumpster' are NA and by removing the rows that only contain valid value of 'dumpster'.
+
+```{r}
+mr_trash_df = 
+  read_excel("./hw2_datasets/202409 Trash Wheel Collection Data.xlsx",
+               sheet = "Mr. Trash Wheel",
+               range = "A2:N655",
+               na = c(".", "NA", "")) |>
+  janitor::clean_names() |>
+  filter(!is.na(dumpster)) |>
+  filter(!if_all(-dumpster, is.na)) |>
+  mutate(sports_balls = as.integer(round(sports_balls)))
+
+print(mr_trash_df)
+```
+
+Then I use a similar process to import, clean, and organize the data for Professor Trash Wheel.
+```{r}
+prof_trash_df = 
+  read_excel("./hw2_datasets/202409 Trash Wheel Collection Data.xlsx",
+               sheet = "Professor Trash Wheel",
+               range = "A2:M123",
+               na = c(".", "NA", "")) |>
+  janitor::clean_names() |>
+  filter(!is.na(dumpster)) |>
+  filter(!if_all(-dumpster, is.na)) 
+
+print(prof_trash_df)
+```
+
+Then I use a similar process to import, clean, and organize the data for Gwynnda Trash Wheel.
+```{r}
+gwy_trash_df = 
+  read_excel("./hw2_datasets/202409 Trash Wheel Collection Data.xlsx",
+               sheet = "Gwynnda Trash Wheel",
+               range = "A2:L266",
+               na = c(".", "NA", "")) |>
+  janitor::clean_names() |>
+  filter(!is.na(dumpster)) |>
+  filter(!if_all(-dumpster, is.na)) 
+
+print(gwy_trash_df)
+```
+
+After that, time to combine datasets.  
+I firstly add a variable called 'type' for each of the three data frames so that I can keep track of which trash wheel is which (and let it be the first column). Then I deleted column 'dumpster' in each dataframe because 'dumpster' values are confusing and not important. Then adjust the column type of all 'year' columns to be the same. Lastly, the three datasets can be combined to be a single tidy one.
+
+```{r}
+mr_trash_df <- mr_trash_df |>
+  mutate(type = "mr") |>
+  relocate(type) |>
+  select(-dumpster) |>
+  mutate(year = as.character(year))
+
+prof_trash_df <- prof_trash_df |>
+  mutate(type = "prof") |>
+  relocate(type) |>
+  select(-dumpster) |>
+  mutate(year = as.character(year))
+
+gwy_trash_df <- gwy_trash_df |>
+  mutate(type = "gwy") |>
+  relocate(type) |>
+  select(-dumpster) |>
+  mutate(year = as.character(year))
+
+merged_df = 
+  bind_rows(mr_trash_df, prof_trash_df, gwy_trash_df)
+print(merged_df)
+```
+
+```{r}
+names(merged_df)
+```
+
+```{r}
+n_rows <- nrow(merged_df)
+cat("The number of observations in the resulting dataset is", n_rows, "\n")
+```
+
+```{r}
+# In the resulting dataset, 'weight_tons', 'volume_cubic_yards', 'plastic_bottles' are some key variables so I randomly select three samples of 10 to give examples of their values.
+
+set.seed(123)
+sampled_weights <- merged_df |>
+  filter(!is.na(weight_tons)) |>
+  pull(weight_tons) |>
+  sample(10)
+cat("Example values of weight_tons:", sampled_weights, "\n")
+
+sampled_volume <- merged_df |>
+  filter(!is.na(volume_cubic_yards)) |>
+  pull(volume_cubic_yards) |>
+  sample(10)
+cat("Example values of volume_cubic_yards:", sampled_volume, "\n")
+
+sampled_plastic_bottles <- merged_df |>
+  filter(!is.na(plastic_bottles)) |>
+  pull(plastic_bottles) |>
+  sample(10)
+cat("Example values of plastic_bottles:", sampled_plastic_bottles, "\n")
+```
+
+
+Then calculate the total weight of trash collected by Professor Trash Wheel and the total number of cigarette butts collected by Gwynnda in June of 2022.
+```{r}
+total_weight_prof <- merged_df |>
+  filter(type == "prof") |>
+  summarize(total_weight = sum(weight_tons)) |>
+  pull(total_weight)
+
+cat("The total weight (tons) of trash collected by Professor Trash Wheel is", total_weight_prof, "\n")
+
+total_cigarette_gwy_7_2022 <- merged_df |>
+  filter(type == "gwy", month == 'July', year == '2022') |>
+  summarize(total_cigarette = sum(cigarette_butts)) |>
+  pull(total_cigarette)
+
+cat("The total number of cigarette butts collected by Gwynnda in June of 2022 is", total_cigarette_gwy_7_2022, "\n")
+```
+
+For available data, the total weight of trash collected by Professor Trash Wheel is `r total_weight_prof` tons, the total number of cigarette butts collected by Gwynnda in June of 2022 is `r total_cigarette_gwy_7_2022`.
+
+## Problem 3
+
+First, import the three datasets: bakers.csv, bakes.csv, and results.csv .
+```{r}
+bakes_df = 
+  read_csv("./hw2_datasets/gbb_datasets/bakes.csv", na = c("UNKNOWN", "N/A", "")) |>
+  janitor::clean_names()
+print(bakes_df)
+
+bakers_df = 
+  read_csv("./hw2_datasets/gbb_datasets/bakers.csv", na = c("NA", "N/A", "")) |>
+  janitor::clean_names()
+print(bakers_df)
+
+results_df = 
+  read_csv("./hw2_datasets/gbb_datasets/results.csv",na = c("NA", ""),
+           skip = 2) |>
+  janitor::clean_names()
+print(results_df)
+```
+
+Aftering importing and viewing each datasets, then we had better check for completeness and correctness across datasets by using anti_join(). 
+  
+```{r}
+anti_join(bakers_df,bakes_df, by=c('series'))
+anti_join(bakes_df,bakers_df, by=c('series'))
+
+anti_join(results_df,bakes_df, by=c('series','baker','episode'))
+anti_join(bakes_df,results_df, by=c('series','baker','episode'))
+
+anti_join(results_df,bakers_df, by=c('series'))
+anti_join(bakers_df, results_df, by=c('series'))
+```
+
+Using anti_join() between bakers_df and bakes_df, I discovered that it seems like bakes_df lacks data of series 9 and 10.  
+However, then when using anti_join() between results_df and bakes_df, I discovered that a person called 'Jo' appears in bakes_df but doesn't appear in results_df, this is kind of weird because a 'Joanne' in results_df but not in bakes_df. 'Jo' and 'Joanne' data are the same in 'series' and 'episode'. Other data that results_df has but bakes_df does not have is data of series 9 and 10, as well as the NA data in series 1-8.  
+From these signs, I infer that the 'Jo' in bakes_df is actually the 'Joanne' in results_df, so in the next step, I will mutate the 'Jo' in bakes_df to 'Joanne'.  
+I will add another column called 'baker' (derived from 'baker_name') for bakers_df in order to merge the three datasets in the future.
+
+```{r}
+bakes_df <- bakes_df |>
+  mutate(baker = ifelse(baker == '"Jo"' , 'Joanne', baker))
+
+bakers_df <- bakers_df |>
+  mutate(baker = sapply(strsplit(baker_name, " "), `[`, 1)) |>
+  relocate('baker','series')
+```
+
+Then, it's time to merge datasets, because results_df is the most complete dataset and has the largest number of rows (although exist some NA values), I choose to join the other two datasets to results_df one by one by using left_join(). At last, I rearrange the order of columns to become more reasonable.
+```{r}
+combined_df=
+  left_join(results_df, bakes_df, by=c('baker','series','episode')) |>
+  relocate('baker','series','episode')
+
+combined_df=
+  left_join(combined_df, bakers_df, by=c('baker','series')) |>
+  select(baker,series, episode, technical, signature_bake, show_stopper, result, everything())
+
+print(combined_df)
+```
+
+```{r}
+cat("The final dataset has ", nrow(combined_df), "rows and", ncol(combined_df), 'columns.')
+```
+
+```{r}
+names(combined_df)
+```
+
+A minor drawback of the final dataset is that it contains some NA values. In a specific series, if a contestant is out, his data in the following episodes are NA but his name will still appear in the following episodes in the final dataset.
+
+```{r}
+#Export the final datasets as a CSV in the directory containing the original datasets
+write.csv(combined_df, file = "./hw2_datasets/gbb_datasets/final_datasets_gbb.csv")
+```
+
+Create a reader-friendly table showing the star baker or winner of each episode in Seasons 5 through 10.
+
+```{r}
+filtered_df <- combined_df |>
+  filter(series >= 5 & series <= 10, result %in% c("WINNER", "STAR BAKER")) |>
+  select(baker_name, series, episode, result)
+print(filtered_df)
+```
+
+In most seasons, the winner is often the person who has won several times throughout the season, so maybe we can predict that the winner in a season will be the person who have won several episodes. But in season 10, David Atherton is the winner but he hasn't won in the previous episodes, so this is kind of a surprise.  
+
+Import, clean, tidy, and organize the viewership data.
+
+```{r}
+viewers_df = 
+  read_csv("./hw2_datasets/gbb_datasets/viewers.csv",na = c("NA", "")) |>
+  janitor::clean_names()
+
+viewers_tidy_df = 
+  pivot_longer(
+    viewers_df, 
+    series_1:series_10,
+    names_to = "series", 
+    values_to = "viewership")
+
+head(viewers_tidy_df, 10)
+
+average_viewership_1 <- viewers_tidy_df |>
+  filter(series == 'series_1') |>  
+  pull(viewership) |>                       
+  mean(na.rm = TRUE)
+
+average_viewership_5 <- viewers_tidy_df |>
+  filter(series == 'series_5') |>  
+  pull(viewership) |>                       
+  mean(na.rm = TRUE)
+```
+
+```{r}
+cat("The average viewership in Season 1 is", average_viewership_1, "\n")
+cat("The average viewership in Season 5 is", average_viewership_5, "\n")
+```
+
+
